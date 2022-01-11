@@ -12,7 +12,11 @@ train_pipeline = [
     dict(type='KIEFormatBundle'),
     dict(
         type='Collect',
-        keys=['img', 'relations', 'texts', 'gt_bboxes', 'gt_labels'])
+        keys=['img', 'relations', 'texts', 'gt_bboxes', 'gt_labels'],
+        meta_keys=[
+            'img_norm_cfg', 'img_shape', 'ori_filename', 'filename',
+            'ori_texts'
+        ])
 ]
 test_pipeline = [
     dict(type='LoadImageFromFile'),
@@ -24,7 +28,7 @@ test_pipeline = [
     dict(type='KIEFormatBundle'),
     dict(
         type='Collect',
-        keys=['img', 'relations', 'texts', 'gt_bboxes'],
+        keys=['img', 'relations', 'texts', 'gt_bboxes', 'gt_labels'],
         meta_keys=[
             'img_norm_cfg', 'img_shape', 'ori_filename', 'filename',
             'ori_texts'

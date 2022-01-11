@@ -9,6 +9,7 @@ from torch.nn.modules.batchnorm import _BatchNorm
 
 from mmocr.models.builder import BACKBONES
 from .resnet import BasicBlock, Bottleneck
+from .unet import InterpConv
 
 class HRModule(BaseModule):
     """High-Resolution Module for HRNet.
@@ -422,6 +423,19 @@ class HRNet(BaseModule):
         self.stage4, pre_stage_channels = self._make_stage(
             self.stage4_cfg, num_channels, multiscale_output=multiscale_output)
         self.base_channels = num_channels[0]
+        
+        self.final_layer = nn.Sequential(
+            build_conv_layer(
+                self.conv_cfg,
+                32,
+                32,
+                kernel_size=3,
+                stride=1,
+                padding=1,
+                bias=False),
+            InterpConv(32, 32),
+            InterpConv(32, 16),
+        )
 
     @property
     def norm1(self):
@@ -600,12 +614,14 @@ class HRNet(BaseModule):
                 x_list.append(y_list[i])
         y_list = self.stage4(x_list)
 
-        return y_list[::-1]
+        featmap = self.final_layer(y_list[0])
+
+        return [featmap]
 
     def train(self, mode=True):
         """Convert the model into training mode will keeping the normalization
         layer freezed."""
-        super(HRNet, self).train(mode)
+        super().train(mode)
         if mode and self.norm_eval:
             for m in self.modules():
                 # trick: eval have effect on BatchNorm only
