@@ -63,8 +63,8 @@ test = dict(
     test_mode=True)
 
 data = dict(
-    samples_per_gpu=4,
-    workers_per_gpu=4,
+    samples_per_gpu=2,
+    workers_per_gpu=2,
     val_dataloader=dict(samples_per_gpu=1),
     test_dataloader=dict(samples_per_gpu=1),
     train=train,
@@ -80,7 +80,11 @@ evaluation = dict(
 
 model = dict(
     type='SDMGR',
-    backbone=dict(type='HRNet'),
+    backbone = dict(
+        type='ResNet',
+        base_channels=16,
+        depth=18,
+        strides=(1,1,1,1)),
     bbox_head=dict(
         type='SDMGRHead', visual_dim=16, num_chars=92, num_classes=26),
     visual_modality=True,

@@ -7,6 +7,7 @@ from mmcv.cnn import build_conv_layer, build_norm_layer, build_plugin_layer
 from mmcv.runner import BaseModule, Sequential
 from torch.nn.modules.batchnorm import _BatchNorm
 
+from .unet import InterpConv
 from mmocr.models.builder import BACKBONES
 
 class ResLayer(Sequential):
@@ -572,7 +573,7 @@ class ResNet(BaseModule):
                  zero_init_residual=True,
                  pretrained=None,
                  init_cfg=None):
-        super(ResNet, self).__init__(init_cfg)
+        super().__init__(init_cfg)
         self.zero_init_residual = zero_init_residual
         if depth not in self.arch_settings:
             raise KeyError(f'invalid depth {depth} for resnet')
@@ -673,6 +674,19 @@ class ResNet(BaseModule):
 
         self.feat_dim = self.block.expansion * base_channels * 2**(
             len(self.stage_blocks) - 1)
+
+        self.final_layer = nn.Sequential(
+            build_conv_layer(
+                self.conv_cfg,
+                128,
+                64,
+                kernel_size=3,
+                stride=1,
+                padding=1,
+                bias=False),
+            InterpConv(64, 32),
+            InterpConv(32, 16),
+        )
 
     def make_stage_plugins(self, plugins, stage_idx):
         """Make plugins for ResNet ``stage_idx`` th stage.
@@ -826,30 +840,17 @@ class ResNet(BaseModule):
             x = res_layer(x)
             if i in self.out_indices:
                 outs.append(x)
-        return tuple(outs)
+        out = outs[-1]
+        out = self.final_layer(out)
+        return [out]
 
     def train(self, mode=True):
         """Convert the model into training mode while keep normalization layer
         freezed."""
-        super(ResNet, self).train(mode)
+        super().train(mode)
         self._freeze_stages()
         if mode and self.norm_eval:
             for m in self.modules():
                 # trick: eval have effect on BatchNorm only
                 if isinstance(m, _BatchNorm):
                     m.eval()
-
-
-@BACKBONES.register_module()
-class ResNetV1d(ResNet):
-    r"""ResNetV1d variant described in `Bag of Tricks
-    <https://arxiv.org/pdf/1812.01187.pdf>`_.
-
-    Compared with default ResNet(ResNetV1b), ResNetV1d replaces the 7x7 conv in
-    the input stem with three 3x3 convs. And in the downsampling block, a 2x2
-    avg_pool with stride 2 is added before conv, whose stride is changed to 1.
-    """
-
-    def __init__(self, **kwargs):
-        super(ResNetV1d, self).__init__(
-            deep_stem=True, avg_down=True, **kwargs)
