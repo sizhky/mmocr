@@ -3,24 +3,48 @@ img_norm_cfg = dict(
 max_scale, min_scale = 1024, 512
 
 train_pipeline = [
+    dict(type='LoadImageFromFile'),
     dict(type='LoadAnnotations'),
-    dict(
-        type='ResizeNoImg', img_scale=(max_scale, min_scale), keep_ratio=True),
+    dict(type='Resize', img_scale=(max_scale, min_scale), keep_ratio=True),
+    dict(type='RandomFlip', flip_ratio=0.),
+    dict(type='Normalize', **img_norm_cfg),
+    dict(type='Pad', size_divisor=32),
     dict(type='KIEFormatBundle'),
     dict(
         type='Collect',
-        keys=['img', 'relations', 'texts', 'gt_bboxes', 'gt_labels'],
-        meta_keys=('filename', 'ori_texts'))
+        keys=['img', 'relations', 'texts', 'gt_bboxes', 'gt_labels'])
 ]
-test_pipeline = [
+val_pipeline = [
+    dict(type='LoadImageFromFile'),
     dict(type='LoadAnnotations'),
-    dict(
-        type='ResizeNoImg', img_scale=(max_scale, min_scale), keep_ratio=True),
+    dict(type='Resize', img_scale=(max_scale, min_scale), keep_ratio=True),
+    dict(type='RandomFlip', flip_ratio=0.),
+    dict(type='Normalize', **img_norm_cfg),
+    dict(type='Pad', size_divisor=32),
     dict(type='KIEFormatBundle'),
     dict(
         type='Collect',
         keys=['img', 'relations', 'texts', 'gt_bboxes'],
-        meta_keys=('filename', 'ori_texts'))
+        meta_keys=[
+            'img_norm_cfg', 'img_shape', 'ori_filename', 'filename',
+            'ori_texts'
+        ])
+]
+test_pipeline = [
+    dict(type='LoadImageFromFile'),
+    dict(type='LoadAnnotations'),
+    dict(type='Resize', img_scale=(max_scale, min_scale), keep_ratio=True),
+    dict(type='RandomFlip', flip_ratio=0.),
+    dict(type='Normalize', **img_norm_cfg),
+    dict(type='Pad', size_divisor=32),
+    dict(type='KIEFormatBundle'),
+    dict(
+        type='Collect',
+        keys=['img', 'relations', 'texts', 'gt_bboxes', 'gt_labels'],
+        meta_keys=[
+            'img_norm_cfg', 'img_shape', 'ori_filename', 'filename',
+            'ori_texts'
+        ])
 ]
 
 dataset_type = 'KIEDataset'
@@ -41,6 +65,14 @@ train = dict(
     loader=loader,
     dict_file=f'{data_root}/dict.txt',
     test_mode=False)
+val = dict(
+    type=dataset_type,
+    ann_file=f'{data_root}/test.txt',
+    pipeline=val_pipeline,
+    img_prefix=data_root,
+    loader=loader,
+    dict_file=f'{data_root}/dict.txt',
+    test_mode=False)
 test = dict(
     type=dataset_type,
     ann_file=f'{data_root}/test.txt',
@@ -52,11 +84,11 @@ test = dict(
 
 data = dict(
     samples_per_gpu=4,
-    workers_per_gpu=1,
+    workers_per_gpu=4,
     val_dataloader=dict(samples_per_gpu=1),
     test_dataloader=dict(samples_per_gpu=1),
     train=train,
-    val=test,
+    val=val,
     test=test)
 
 evaluation = dict(
@@ -66,14 +98,20 @@ evaluation = dict(
         macro_f1=dict(
             ignores=[0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 25])))
 
+context_window_sizes = (1000,)
 model = dict(
     type='SDMGR',
-    backbone=dict(type='UNet', base_channels=16),
+    backbone = dict(
+        type='ResNet',
+        base_channels=16,
+        depth=18,
+        strides=(1,1,1,1)),
     bbox_head=dict(
-        type='SDMGRHead', visual_dim=16, num_chars=92, num_classes=26),
-    visual_modality=False,
+        type='SDMGRHead', visual_dim=len(context_window_sizes)*16, num_chars=92, num_classes=26),
+    visual_modality=True,
     train_cfg=None,
     test_cfg=None,
+    context_window_sizes=context_window_sizes,
     class_list=f'{data_root}/class_list.txt')
 
 optimizer = dict(type='Adam', weight_decay=0.0001)
@@ -95,4 +133,3 @@ resume_from = None
 workflow = [('train', 1)]
 
 find_unused_parameters = True
-

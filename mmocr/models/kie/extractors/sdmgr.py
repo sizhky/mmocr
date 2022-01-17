@@ -1,7 +1,7 @@
 # Copyright (c) OpenMMLab. All rights reserved.
 import warnings
 
-import mmcv
+import mmcv, torch
 from mmdet.core import bbox2roi
 from torch import nn
 from torch.nn import functional as F
@@ -37,7 +37,8 @@ class SDMGR(SingleStageDetector):
                  test_cfg=None,
                  class_list=None,
                  init_cfg=None,
-                 openset=False):
+                 openset=False,
+                 context_window_sizes=(1,)):
         super().__init__(
             backbone, neck, bbox_head, train_cfg, test_cfg, init_cfg=init_cfg)
         self.visual_modality = visual_modality
@@ -51,6 +52,7 @@ class SDMGR(SingleStageDetector):
             self.extractor = None
         self.class_list = class_list
         self.openset = openset
+        self.context_window_sizes = context_window_sizes
 
     def forward_train(self, img, img_metas, relations, texts, gt_bboxes,
                       gt_labels):
@@ -95,9 +97,33 @@ class SDMGR(SingleStageDetector):
     def extract_feat(self, img, gt_bboxes):
         if self.visual_modality:
             x = super().extract_feat(img)[-1]
-            feats = self.maxpool(self.extractor([x], bbox2roi(gt_bboxes)))
+            feats = []
+            for context_window_size in self.context_window_sizes:
+                sz = context_window_size
+                _gt_bboxes = self.expand_bboxes(gt_bboxes, img, dx=sz, dy=sz)
+                _feats = self.maxpool(self.extractor([x], bbox2roi(_gt_bboxes)))
+                feats.append(_feats)
+            feats = torch.cat(feats, dim=1)
             return feats.view(feats.size(0), -1)
         return None
+
+    def expand_bboxes(self, gt_bboxes, imgs, dx=5, dy=5, debug=True):
+        from torch_snippets import BB, enlarge_bbs, np, show, resize, inspect, torch, plt
+        device = gt_bboxes[0].get_device()
+        x = [bbs.int().cpu().numpy() for bbs in gt_bboxes]
+        _, _, h, w = imgs.shape
+        z = [np.array(enlarge_bbs(bbs, eps=(dx-1,dy-1))) for bbs in x]
+        z = [np.clip(arr, [[0,0,0,0]], [[w,h,w,h]]) for arr in z]
+        if debug:
+            for ix in range(len(imgs)):
+                img = (imgs[ix].clip(0,1)*255).int().cpu().numpy().astype(np.uint8).transpose(1,2,0)
+                img = resize(img, 1.0)
+                _, ax = plt.subplots(1,2,figsize=(20,10))
+                show(img, bbs=x[ix], bb_colors='random', sz=5, ax=ax[0])
+                show(img, bbs=z[ix], bb_colors='random', sz=5, ax=ax[1])
+                plt.tight_layout()
+        gt_bboxes = [torch.tensor(_z, device=gt_bboxes[0].device).float() for _z in z]
+        return gt_bboxes
 
     def show_result(self,
                     img,

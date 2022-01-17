@@ -32,7 +32,7 @@ test_pipeline = [
 ]
 
 dataset_type = 'KIEDataset'
-data_root = 'data/wildreceipt'
+data_root = '/data1/datasets/wildreceipt'
 
 loader = dict(
     type='HardDiskLoader',
